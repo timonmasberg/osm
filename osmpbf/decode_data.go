@@ -311,11 +311,12 @@ func (dec *dataDecoder) extractDenseNodes() error {
 
 	var id, lat, lon, timestamp, changeset int64
 	var uid, usid int32
-	for dec.versions.HasNext() {
-		// NOTE: do not try pre-allocating an array of nodes because saving
-		// just one will stop the GC from cleaning up the whole pre-allocated array.
-		n := &osm.Node{Visible: true}
 
+	// NOTE: do not try pre-allocating an array of nodes because saving
+	// just one will stop the GC from cleaning up the whole pre-allocated array.
+	n := &osm.Node{Visible: true}
+
+	for dec.versions.HasNext() {
 		// ID
 		v1, err := dec.ids.Sint64()
 		if err != nil {
@@ -410,8 +411,13 @@ func (dec *dataDecoder) extractDenseNodes() error {
 				n.Tags = append(n.Tags, osm.Tag{Key: st[k], Value: st[v]})
 			}
 		}
-
-		dec.q = append(dec.q, n)
+		if dec.scanner.NodeFilter != nil && !dec.scanner.NodeFilter(*n) {
+			// skip unwanted nodes
+			*n = osm.Node{Visible: true}
+		} else {
+			dec.q = append(dec.q, n)
+			n = &osm.Node{Visible: true}
+		}
 	}
 
 	return nil
@@ -574,8 +580,9 @@ func (dec *dataDecoder) scanWays(data []byte) error {
 			return err
 		}
 	}
-
-	dec.q = append(dec.q, way)
+	if dec.scanner.WayFilter == nil || dec.scanner.WayFilter(*way) {
+		dec.q = append(dec.q, way)
+	}
 	return nil
 }
 
@@ -738,8 +745,9 @@ func (dec *dataDecoder) scanRelations(data []byte) error {
 			return err
 		}
 	}
-
-	dec.q = append(dec.q, relation)
+	if dec.scanner.RelationFilter == nil || dec.scanner.RelationFilter(*relation) {
+		dec.q = append(dec.q, relation)
+	}
 	return nil
 }
 
